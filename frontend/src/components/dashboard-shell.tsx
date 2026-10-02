@@ -86,8 +86,13 @@ const navigation: Record<Role, NavigationEntry[]> = {
     },
     {
       label: "Warehouses",
-      href: "/dashboard/admin#warehouses",
+      href: "/dashboard/admin/warehouses",
       icon: "box",
+    },
+    {
+      label: "Items",
+      href: "/dashboard/admin/items",
+      icon: "transfer",
     },
     {
       label: "System overview",
@@ -109,6 +114,8 @@ const pageTitles: Record<string, string> = {
   "/dashboard/warehouse/transfers": "Stock transfers",
   "/dashboard/logistics": "Logistics overview",
   "/dashboard/admin": "System overview",
+  "/dashboard/admin/items": "Item management",
+  "/dashboard/admin/warehouses": "Warehouse management",
 };
 
 function isRole(role: string): role is Role {
