@@ -1,0 +1,228 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  users       User[]
+}
+
+model User {
+  id                 Int             @id @default(autoincrement())
+  roleId             Int
+  warehouseId        Int?
+  username           String          @unique
+  email              String          @unique
+  passwordHash       String
+  firstName          String
+  lastName           String
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  auditLogs          AuditLog[]
+  shipmentsCreated   Shipment[]
+  transfersApproved  StockTransfer[] @relation("TransferApprovedBy")
+  transfersRequested StockTransfer[] @relation("TransferRequestedBy")
+  role               Role            @relation(fields: [roleId], references: [id])
+  warehouse          Warehouse?      @relation(fields: [warehouseId], references: [id])
+}
+
+model Warehouse {
+  id                   Int              @id @default(autoincrement())
+  code                 String           @unique
+  name                 String
+  addressLine          String
+  city                 String
+  province             String
+  postalCode           String
+  contactNumber        String
+  status               String           @default("ACTIVE")
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  destinationShipments Shipment[]       @relation("DestinationShipments")
+  sourceShipments      Shipment[]       @relation("SourceShipments")
+  destinationTransfers StockTransfer[]  @relation("DestinationTransfers")
+  sourceTransfers      StockTransfer[]  @relation("SourceTransfers")
+  users                User[]
+  warehouseStock       WarehouseStock[]
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  items       Item[]
+}
+
+model Item {
+  id                 Int                 @id @default(autoincrement())
+  categoryId         Int
+  sku                String              @unique
+  name               String
+  description        String?
+  unitOfMeasure      String
+  weight             Decimal?
+  reorderLevel       Int                 @default(0)
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  category           Category            @relation(fields: [categoryId], references: [id])
+  shipmentItems      ShipmentItem[]
+  stockTransferItems StockTransferItem[]
+  warehouseStock     WarehouseStock[]
+}
+
+model Supplier {
+  id            Int        @id @default(autoincrement())
+  supplierCode  String     @unique
+  companyName   String
+  contactPerson String?
+  email         String?
+  phone         String?
+  address       String?
+  status        String     @default("ACTIVE")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  shipments     Shipment[]
+}
+
+model WarehouseStock {
+  warehouseId     Int
+  itemId          Int
+  quantityOnHand  Int       @default(0)
+  reorderLevel    Int       @default(0)
+  lastRestockedAt DateTime?
+  updatedAt       DateTime  @updatedAt
+  item            Item      @relation(fields: [itemId], references: [id])
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@id([warehouseId, itemId])
+}
+
+model Driver {
+  id            Int        @id @default(autoincrement())
+  employeeCode  String     @unique
+  firstName     String
+  lastName      String
+  licenseNumber String     @unique
+  licenseExpiry DateTime
+  phone         String?
+  status        String     @default("ACTIVE")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  shipments     Shipment[]
+}
+
+model Vehicle {
+  id          Int        @id @default(autoincrement())
+  vehicleCode String     @unique
+  plateNumber String     @unique
+  vehicleType String
+  capacity    Decimal
+  status      String     @default("AVAILABLE")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  shipments   Shipment[]
+}
+
+model Route {
+  id                       Int        @id @default(autoincrement())
+  routeCode                String     @unique
+  origin                   String
+  destination              String
+  distanceKm               Decimal
+  estimatedDurationMinutes Int
+  status                   String     @default("ACTIVE")
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
+  shipments                Shipment[]
+}
+
+model Shipment {
+  id                     Int            @id @default(autoincrement())
+  shipmentNumber         String         @unique
+  supplierId             Int?
+  sourceWarehouseId      Int?
+  destinationWarehouseId Int?
+  driverId               Int?
+  vehicleId              Int?
+  routeId                Int?
+  shipmentType           String
+  status                 String         @default("PENDING")
+  scheduledAt            DateTime?
+  dispatchedAt           DateTime?
+  receivedAt             DateTime?
+  createdBy              Int
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  creator                User           @relation(fields: [createdBy], references: [id])
+  destinationWarehouse   Warehouse?     @relation("DestinationShipments", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  driver                 Driver?        @relation(fields: [driverId], references: [id])
+  route                  Route?         @relation(fields: [routeId], references: [id])
+  sourceWarehouse        Warehouse?     @relation("SourceShipments", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
+  supplier               Supplier?      @relation(fields: [supplierId], references: [id])
+  vehicle                Vehicle?       @relation(fields: [vehicleId], references: [id])
+  shipmentItems          ShipmentItem[]
+}
+
+model ShipmentItem {
+  shipmentId Int
+  itemId     Int
+  quantity   Int
+  unitWeight Decimal
+  item       Item     @relation(fields: [itemId], references: [id])
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@id([shipmentId, itemId])
+}
+
+model StockTransfer {
+  id                     Int                 @id @default(autoincrement())
+  transferNumber         String              @unique
+  sourceWarehouseId      Int
+  destinationWarehouseId Int
+  requestedBy            Int
+  approvedBy             Int?
+  status                 String              @default("PENDING")
+  requestedAt            DateTime            @default(now())
+  approvedAt             DateTime?
+  completedAt            DateTime?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  approver               User?               @relation("TransferApprovedBy", fields: [approvedBy], references: [id])
+  destinationWarehouse   Warehouse           @relation("DestinationTransfers", fields: [destinationWarehouseId], references: [id])
+  requester              User                @relation("TransferRequestedBy", fields: [requestedBy], references: [id])
+  sourceWarehouse        Warehouse           @relation("SourceTransfers", fields: [sourceWarehouseId], references: [id])
+  items                  StockTransferItem[]
+}
+
+model StockTransferItem {
+  transferId          Int
+  itemId              Int
+  quantityRequested   Int
+  quantityTransferred Int           @default(0)
+  item                Item          @relation(fields: [itemId], references: [id])
+  transfer            StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@id([transferId, itemId])
+}
+
+model AuditLog {
+  id               Int      @id @default(autoincrement())
+  userId           Int?
+  action           String
+  tableName        String
+  recordIdentifier String
+  oldValues        Json?
+  newValues        Json?
+  createdAt        DateTime @default(now())
+  user             User?    @relation(fields: [userId], references: [id])
+}
