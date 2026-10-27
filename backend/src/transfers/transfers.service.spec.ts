@@ -183,6 +183,19 @@ describe("TransfersService", () => {
     expect(queryParameters).not.toContain(999);
   });
 
+  it("passes SQL-looking transfer numbers as bound values", async () => {
+    const maliciousLookingNumber = "TRF'); DROP TABLE User; --";
+
+    await service.createTransfer(
+      { ...transferInput, transferNumber: maliciousLookingNumber },
+      warehouseStaff,
+    );
+
+    const [queryParts, ...queryParameters] = prisma.$queryRaw.mock.calls[0];
+    expect(queryParts.join("")).not.toContain(maliciousLookingNumber);
+    expect(queryParameters).toContain(maliciousLookingNumber);
+  });
+
   it("scopes warehouse staff transfer history to their assigned warehouse", async () => {
     prisma.stockTransfer.findMany.mockResolvedValue([]);
 

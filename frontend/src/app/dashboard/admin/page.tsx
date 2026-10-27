@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
 import { StatusBadge } from "@/components/dashboard-ui";
@@ -274,7 +275,15 @@ export default function AdminDashboard() {
 
       <div className="admin-content-grid">
         <section className="warehouse-section" id="users">
-          <SectionHeading eyebrow="ACCESS" title="Recent users" />
+          <div className="section-heading">
+            <div>
+              <p className="section-eyebrow">ACCESS</p>
+              <h2>Recent users</h2>
+            </div>
+            <Link className="primary-action" href="/dashboard/admin/staff">
+              Manage staff accounts
+            </Link>
+          </div>
           {latestUsers.length === 0 ? (
             <EmptyState message="No users are recorded." />
           ) : (

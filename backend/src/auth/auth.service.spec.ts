@@ -34,6 +34,16 @@ describe('AuthService', () => {
     ).rejects.toThrow(UnauthorizedException);
   });
 
+  it("rejects malformed credentials before querying the database", async () => {
+    await expect(service.login("", "password")).rejects.toThrow(
+      "A valid username and password are required.",
+    );
+    await expect(
+      service.login("warehouse1", "x".repeat(73)),
+    ).rejects.toThrow("A valid username and password are required.");
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
   it("rejects an inactive user", async () => {
     prisma.user.findUnique.mockResolvedValue({
       isActive: false,

@@ -237,15 +237,38 @@ The backend CORS allow-list must include the exact deployed frontend origin.
 Do not put database credentials or the JWT secret in any `NEXT_PUBLIC_*`
 variable.
 
+The backend has an in-memory Nest throttler: 120 requests per minute per
+client IP globally, 5 login attempts per minute, and 20 staff-management
+requests per minute on each mutation route. The limiter state is local to each
+backend instance;
+multiple Render instances do not share counters. Use a shared throttler store
+before relying on a cluster-wide limit. For Render's single trusted ingress
+proxy, set the backend-only `TRUST_PROXY_HOPS=1` only when traffic is guaranteed
+to pass through that proxy. Otherwise leave it unset; arbitrary forwarded
+headers are not trusted by default. Keep all secrets server-side.
+
+System administrators can manage warehouse staff through the admin dashboard.
+The protected endpoints are `GET` and `POST /admin/warehouse-staff`,
+`PATCH /admin/warehouse-staff/:id/warehouse`, and
+`PATCH /admin/warehouse-staff/:id/status`. These endpoints assign the
+`WAREHOUSE_STAFF` role by its database name and accept only active warehouses.
+They do not require a schema migration.
+
+The backend SQL-injection review found only static SQL passed through Prisma's
+tagged `$queryRaw` API: the database health check contains no input, shipment
+operations bind shipment numbers as values, and stock transfers bind transfer
+fields and JSON data as values. No unsafe raw-query APIs or user-built SQL
+identifiers were found in backend source. The existing Prisma model queries
+use fixed query structures; there are no client-controlled sort or SQL filter
+fragments to allowlist.
+
 Deployment has not been performed. Review environment configuration, database
 branching, migration status, and the user-audit trigger finding before
 production.
 
-## Git workflow status
+## Git workflow
 
-This checkout was not a Git working tree at inspection time. A local empty
-`feature/veltrix-completion` branch has since been initialized, with no commit
-or remote configured. Existing history, branch protections, GitHub connection,
-and pull-request workflow therefore could not be verified. Do not publish
-credentials; configure the intended remote and review the staged/unstaged
-changes before committing or opening a pull request.
+Make changes on a feature branch and open a pull request into the protected
+`main` branch. Do not push directly to `main`. Review the worktree and
+deployment configuration before committing or opening a pull request, and
+never publish credentials or `.env` files.

@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import bcrypt from "bcrypt";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 type ItemPayload = {
@@ -48,6 +49,14 @@ const warehouseFields = [
   "postalCode",
   "contactNumber",
   "status",
+];
+const warehouseStaffFields = [
+  "firstName",
+  "lastName",
+  "username",
+  "email",
+  "password",
+  "warehouseId",
 ];
 
 function assertObjectPayload(value: unknown): asserts value is Record<string, unknown> {
@@ -279,6 +288,142 @@ export class AdminService {
     });
   }
 
+  getWarehouseStaff() {
+    return this.prisma.user.findMany({
+      where: {
+        role: { name: "WAREHOUSE_STAFF" },
+      },
+      select: this.warehouseStaffSelect(),
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
+    });
+  }
+
+  async createWarehouseStaff(input: unknown) {
+    assertObjectPayload(input);
+    rejectUnknownFields(input, warehouseStaffFields);
+
+    const firstName = requiredText(input, "firstName", false)!;
+    const lastName = requiredText(input, "lastName", false)!;
+    const username = requiredText(input, "username", false)!;
+    const email = requiredText(input, "email", false)!.toLowerCase();
+    const password = input.password;
+    const warehouseId = positiveInteger(input, "warehouseId", false)!;
+
+    if (typeof password !== "string" || password.length === 0) {
+      throw new BadRequestException("password is required.");
+    }
+    if (firstName.length > 100 || lastName.length > 100) {
+      throw new BadRequestException("Names must be 100 characters or fewer.");
+    }
+    if (
+      username.length > 64 ||
+      username.split("").some(
+        (character) =>
+          character.trim().length === 0 ||
+          character.charCodeAt(0) < 32 ||
+          character.charCodeAt(0) === 127,
+      )
+    ) {
+      throw new BadRequestException(
+        "username must be at most 64 characters and contain no whitespace.",
+      );
+    }
+    if (
+      email.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ) {
+      throw new BadRequestException("A valid email address is required.");
+    }
+    if (
+      password.length < 12 ||
+      Buffer.byteLength(password, "utf8") > 72
+    ) {
+      throw new BadRequestException(
+        "password must be at least 12 characters and no more than 72 UTF-8 bytes.",
+      );
+    }
+
+    const [role, warehouse] = await Promise.all([
+      this.prisma.role.findUnique({
+        where: { name: "WAREHOUSE_STAFF" },
+        select: { id: true },
+      }),
+      this.getEligibleWarehouse(warehouseId),
+    ]);
+
+    if (!role) {
+      throw new NotFoundException("The WAREHOUSE_STAFF role is not configured.");
+    }
+    if (!warehouse) {
+      throw new BadRequestException(
+        "The selected warehouse does not exist or is inactive.",
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    try {
+      return await this.prisma.user.create({
+        data: {
+          roleId: role.id,
+          warehouseId,
+          username,
+          email,
+          passwordHash,
+          firstName,
+          lastName,
+        },
+        select: this.warehouseStaffSelect(),
+      });
+    } catch (error) {
+      this.handleStaffWriteError(error);
+    }
+  }
+
+  async assignWarehouseStaff(id: number, input: unknown) {
+    this.assertId(id);
+    assertObjectPayload(input);
+    rejectUnknownFields(input, ["warehouseId"]);
+    const warehouseId = positiveInteger(input, "warehouseId", false)!;
+    const warehouse = await this.getEligibleWarehouse(warehouseId);
+    if (!warehouse) {
+      throw new BadRequestException(
+        "The selected warehouse does not exist or is inactive.",
+      );
+    }
+    await this.assertWarehouseStaffExists(id);
+
+    try {
+      return await this.prisma.user.update({
+        where: { id },
+        data: { warehouseId },
+        select: this.warehouseStaffSelect(),
+      });
+    } catch (error) {
+      this.handleStaffWriteError(error);
+    }
+  }
+
+  async updateWarehouseStaffStatus(id: number, input: unknown) {
+    this.assertId(id);
+    assertObjectPayload(input);
+    rejectUnknownFields(input, ["isActive"]);
+    if (typeof input.isActive !== "boolean") {
+      throw new BadRequestException("isActive must be a boolean.");
+    }
+    await this.assertWarehouseStaffExists(id);
+
+    try {
+      return await this.prisma.user.update({
+        where: { id },
+        data: { isActive: input.isActive },
+        select: this.warehouseStaffSelect(),
+      });
+    } catch (error) {
+      this.handleStaffWriteError(error);
+    }
+  }
+
   getItems() {
     return this.prisma.item.findMany({
       select: {
@@ -475,6 +620,73 @@ export class AdminService {
     if (!category) {
       throw new BadRequestException("The selected category does not exist.");
     }
+  }
+
+  private getEligibleWarehouse(warehouseId: number) {
+    return this.prisma.warehouse.findFirst({
+      where: { id: warehouseId, status: "ACTIVE" },
+      select: { id: true },
+    });
+  }
+
+  private async assertWarehouseStaffExists(id: number) {
+    const staff = await this.prisma.user.findFirst({
+      where: { id, role: { name: "WAREHOUSE_STAFF" } },
+      select: { id: true },
+    });
+    if (!staff) {
+      throw new NotFoundException("Warehouse staff account was not found.");
+    }
+  }
+
+  private warehouseStaffSelect() {
+    return {
+      id: true,
+      firstName: true,
+      lastName: true,
+      username: true,
+      email: true,
+      isActive: true,
+      warehouse: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
+    };
+  }
+
+  private handleStaffWriteError(error: unknown): never {
+    if (isPrismaError(error)) {
+      if (error.code === "P2002") {
+        const target = "meta" in error && typeof error.meta === "object" &&
+          error.meta !== null && "target" in error.meta
+          ? error.meta.target
+          : undefined;
+        const fields = Array.isArray(target)
+          ? target
+              .filter((field): field is string => typeof field === "string")
+              .join(",")
+          : typeof target === "string"
+            ? target
+            : "";
+        if (fields.includes("username")) {
+          throw new ConflictException("A user with this username already exists.");
+        }
+        if (fields.includes("email")) {
+          throw new ConflictException("A user with this email address already exists.");
+        }
+        throw new ConflictException("A user with this username or email already exists.");
+      }
+      if (error.code === "P2025") {
+        throw new NotFoundException("Warehouse staff account was not found.");
+      }
+      if (error.code === "P2003") {
+        throw new BadRequestException("The selected warehouse is not available.");
+      }
+    }
+    throw error;
   }
 
   private assertId(id: number) {
