@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -13,9 +14,21 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async login(username: string, password: string) {
+  async login(username: unknown, password: unknown) {
+    if (
+      typeof username !== "string" ||
+      username.trim().length === 0 ||
+      username.trim().length > 64 ||
+      typeof password !== "string" ||
+      password.length === 0 ||
+      Buffer.byteLength(password, "utf8") > 72
+    ) {
+      throw new BadRequestException("A valid username and password are required.");
+    }
+
+    const normalizedUsername = username.trim();
     const user = await this.prisma.user.findUnique({
-      where: { username },
+      where: { username: normalizedUsername },
       include: {
         role: true,
       },

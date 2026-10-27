@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { AuthController } from './auth.controller.js';
 
 describe('AuthController', () => {
@@ -21,5 +22,11 @@ describe('AuthController', () => {
       "warehouse1",
       "secret",
     );
+  });
+
+  it("rejects a missing or non-object login body", () => {
+    expect(() => controller.login(null)).toThrow(BadRequestException);
+    expect(() => controller.login("username")).toThrow(BadRequestException);
+    expect(authService.login).not.toHaveBeenCalled();
   });
 });
